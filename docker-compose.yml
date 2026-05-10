@@ -1,0 +1,46 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: ecot_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ecot
+      POSTGRES_PASSWORD: ecot_pass
+      POSTGRES_DB: ecot_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecot -d ecot_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Backend ─────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: ecot_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Override DB host to use docker service name
+      DATABASE_URL: postgresql://ecot:ecot_pass@db:5432/ecot_db
+    volumes:
+      # Mount credentials file and model directory
+      - ./firebase_credentials.json:/app/firebase_credentials.json:ro
+      - ./models:/app/models
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
